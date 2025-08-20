@@ -38,8 +38,8 @@ jobs:
       - name: Prepare deploy folder
         run: |
           mkdir -p deploy
-          cp -r dist/* deploy/
-          cp -r examples/* deploy/
+          cp -r dist deploy/
+          cp -r examples deploy/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
