@@ -35,15 +35,16 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Upload dist
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
+      - name: Prepare deploy folder
+        run: |
+          mkdir -p deploy
+          cp -r dist/* deploy/
+          cp -r examples/* deploy/
 
-      - name: Upload examples
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: examples
+          path: deploy
 
   deploy:
     environment:
