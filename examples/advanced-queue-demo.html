@@ -5,49 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Web Queue 示例</title>
   <link rel="stylesheet" href="common.css">
-  <style>
-    .container {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-      background-color: #4CAF50;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #45a049;
-    }
-    input, select {
-      padding: 8px;
-      margin: 5px 0;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    .message-list {
-      height: 200px;
-      overflow-y: auto;
-      border: 1px solid #ddd;
-      padding: 10px;
-      margin-top: 10px;
-      background-color: #f9f9f9;
-    }
-    .message-item {
-      padding: 5px;
-      border-bottom: 1px solid #eee;
-    }
-    .message-item:last-child {
-      border-bottom: none;
-    }
-    .status-pending { color: #2196F3; }
-    .status-processing { color: #FF9800; }
-    .status-completed { color: #4CAF50; }
-    .status-failed { color: #F44336; }
-    .status-delayed { color: #9C27B0; }
-    .status-dead_letter { color: #795548; }
-  </style>
 </head>
 <body>
   <h1>Web Queue 高级功能演示</h1>

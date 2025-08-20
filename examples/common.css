@@ -9,7 +9,11 @@ body {
 h1 {
   text-align: center;
 }
-
+.container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
 .demo-list {
   list-style: none;
   padding: 0;
@@ -42,7 +46,7 @@ h1 {
 button {
   margin: 5px;
   padding: 8px 12px;
-  background: #007bff;
+  background: #45a049;
   color: white;
   border: none;
   border-radius: 4px;
@@ -50,5 +54,63 @@ button {
 }
 
 button:hover {
-  background: #0056b3;
+  background: #45a049;
 }
+button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+input, select {
+  padding: 8px;
+  margin: 5px 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.message-list {
+  height: 200px;
+  overflow-y: auto;
+  border: 1px solid #ddd;
+  padding: 10px;
+  margin-top: 10px;
+  background-color: #f9f9f9;
+}
+.message-item {
+  padding: 5px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+}
+.message-item:hover {
+  background-color: #f0f0f0;
+}
+.message-item.selected {
+  background-color: #e0e0e0;
+  border-left: 3px solid #4CAF50;
+}
+.message-item:last-child {
+  border-bottom: none;
+}
+.log {
+  font-family: monospace;
+  background-color: #f5f5f5;
+  border: 1px solid #ddd;
+  padding: 10px;
+  margin-top: 10px;
+  height: 150px;
+  overflow-y: auto;
+}
+.log-entry {
+  margin: 2px 0;
+  padding: 2px 0;
+  border-bottom: 1px solid #eee;
+}
+.status-pending { color: #2196F3; }
+.status-processing { color: #FF9800; }
+.status-completed { color: #4CAF50; }
+.status-failed { color: #F44336; }
+.status-delayed { color: #9C27B0; }
+.status-dead_letter { color: #795548; }
+
+.log-entry.info { color: #2196F3; }
+.log-entry.success { color: #4CAF50; }
+.log-entry.warning { color: #FF9800; }
+.log-entry.error { color: #F44336; }
