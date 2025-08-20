@@ -2,6 +2,19 @@
 
 一个同时支持浏览器和Node.js环境的队列库，使用TypeScript开发。
 
+## 功能特性
+
+- **基本队列功能**：支持FIFO（先进先出）操作，包括入队、出队、查看队首元素等。
+- **主题队列**：基于BroadcastChannel API实现跨标签页/窗口的消息广播和订阅。
+- **高级队列功能**：
+  - 消息优先级：支持为消息设置优先级，高优先级消息优先处理。
+  - 延迟消息：支持延迟投递消息，消息将在指定时间后进入队列。
+  - 幂等性：支持自定义消息ID，确保消息的唯一性。
+  - 重试机制：消息处理失败后自动重试，可配置最大重试次数和重试间隔。
+  - 死信队列：处理失败且超过最大重试次数的消息将进入死信队列。
+  - 持久化：支持将队列状态持久化到内存、localStorage或IndexedDB。
+- **存储驱动**：支持多种存储后端，包括内存、localStorage和IndexedDB。
+
 ## 安装
 
 ```bash
@@ -216,6 +229,20 @@ const indexedDBQueue = new AdvancedQueue({
 });
 ```
 
+#### 存储驱动选项
+
+- **MemoryStorageDriver**：
+  - 适用于临时数据，不持久化到磁盘。
+  - 适合测试或短期使用的场景。
+
+- **LocalStorageDriver**：
+  - 基于 `localStorage` API，适合存储小量数据（通常限制为 5MB）。
+  - 支持跨会话持久化，但仅限同源页面。
+
+- **IndexedDBStorageDriver**：
+  - 基于 `IndexedDB` API，适合存储大量结构化数据。
+  - 支持异步操作，适合高性能要求的场景。
+
 ## 示例
 
 项目包含多个交互式示例，展示了各种功能的使用方法：
@@ -281,8 +308,22 @@ AdvancedTopicQueue 继承自 AdvancedQueue，并添加了以下方法：
 ### 存储驱动接口
 
 - `MemoryStorageDriver` - 内存存储驱动
+  - `save<T>(key: string, data: T): Promise<void>` - 保存数据到内存
+  - `load<T>(key: string): Promise<T | null>` - 从内存加载数据
+  - `delete(key: string): Promise<void>` - 从内存删除数据
+  - `clear(): Promise<void>` - 清空内存存储
+
 - `LocalStorageDriver` - localStorage 存储驱动
+  - `save<T>(key: string, data: T): Promise<void>` - 保存数据到 localStorage
+  - `load<T>(key: string): Promise<T | null>` - 从 localStorage 加载数据
+  - `delete(key: string): Promise<void>` - 从 localStorage 删除数据
+  - `clear(): Promise<void>` - 清空 localStorage 存储
+
 - `IndexedDBStorageDriver` - IndexedDB 存储驱动
+  - `save<T>(key: string, data: T): Promise<void>` - 保存数据到 IndexedDB
+  - `load<T>(key: string): Promise<T | null>` - 从 IndexedDB 加载数据
+  - `delete(key: string): Promise<void>` - 从 IndexedDB 删除数据
+  - `clear(): Promise<void>` - 清空 IndexedDB 存储
 
 ## 开发
 
