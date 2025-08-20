@@ -1,7 +1,7 @@
 {
   "name": "web-queue",
-  "version": "0.1.0",
-  "description": "A browser and Node.js compatible queue library",
+  "version": "0.2.0",
+  "description": "A browser and Node.js compatible queue library with advanced features like priority, delay, retry, and persistence",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
@@ -12,6 +12,7 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "test": "jest",
+    "test:coverage": "jest --coverage",
     "lint": "eslint src --ext .ts",
     "prepublishOnly": "npm run build"
   },
@@ -19,17 +20,24 @@
     "queue",
     "browser",
     "nodejs",
-    "typescript"
+    "typescript",
+    "priority-queue",
+    "delayed-queue",
+    "retry",
+    "dead-letter",
+    "persistence",
+    "idempotent"
   ],
   "author": "",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@types/jest": "^29.5.0",
+    "@types/jest": "^29.5.14",
     "@types/node": "^18.15.11",
     "@typescript-eslint/eslint-plugin": "^5.57.1",
     "@typescript-eslint/parser": "^5.57.1",
     "eslint": "^8.37.0",
     "jest": "^29.5.0",
+    "jest-environment-jsdom": "^30.0.5",
     "ts-jest": "^29.1.0",
     "tsup": "^6.7.0",
     "typescript": "^5.0.3"

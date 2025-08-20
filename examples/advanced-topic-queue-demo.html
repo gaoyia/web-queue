@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>高级主题队列示例</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      margin-top: 0;
+    }
+    button {
+      margin: 5px;
+      padding: 8px 12px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    input, select {
+      padding: 8px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .message-list {
+      height: 200px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 10px;
+      background-color: #f9f9f9;
+    }
+    .message-item {
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+    }
+    .message-item:last-child {
+      border-bottom: none;
+    }
+    .status-pending { color: #2196F3; }
+    .status-processing { color: #FF9800; }
+    .status-completed { color: #4CAF50; }
+    .status-failed { color: #F44336; }
+    .status-delayed { color: #9C27B0; }
+    .status-dead_letter { color: #795548; }
+    .tab-container {
+      display: flex;
+      border-bottom: 1px solid #ccc;
+      margin-bottom: 15px;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      background-color: #f1f1f1;
+      border: 1px solid #ccc;
+      border-bottom: none;
+      margin-right: 5px;
+      border-radius: 5px 5px 0 0;
+    }
+    .tab.active {
+      background-color: white;
+      border-bottom: 1px solid white;
+      margin-bottom: -1px;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    iframe {
+      border: 1px solid #ddd;
+      width: 100%;
+      height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <h1>高级主题队列多标签页通信示例</h1>
+  
+  <div class="tab-container">
+    <div class="tab active" data-tab="producer">生产者</div>
+    <div class="tab" data-tab="consumer">消费者</div>
+  </div>
+  
+  <div id="producer" class="tab-content active">
+    <div class="panel">
+      <h2>主题队列配置</h2>
+      <div>
+        <label>
+          主题名称:
+          <input type="text" id="topic-name" value="shared-topic">
+        </label>
+      </div>
+      <div>
+        <label>
+          存储驱动:
+          <select id="storage-driver">
+            <option value="memory">内存</option>
+            <option value="localstorage" selected>LocalStorage</option>
+            <option value="indexeddb">IndexedDB</option>
+          </select>
+        </label>
+      </div>
+      <div>
+        <label>
+          <input type="checkbox" id="persistence-enabled" checked>
+          启用持久化
+        </label>
+      </div>
+      <button id="create-topic">创建主题队列</button>
+    </div>
+
+    <div class="panel">
+      <h2>发送消息</h2>
+      <div>
+        <label>
+          消息内容:
+          <input type="text" id="message-content" placeholder="输入消息内容">
+        </label>
+      </div>
+      <div>
+        <label>
+          优先级 (0-10):
+          <input type="number" id="message-priority" value="0" min="0" max="10">
+        </label>
+      </div>
+      <div>
+        <label>
+          延迟时间 (毫秒):
+          <input type="number" id="message-delay" value="0" min="0" step="1000">
+        </label>
+      </div>
+      <button id="send-message">发送消息</button>
+    </div>
+
+    <div class="panel">
+      <h2>队列状态</h2>
+      <div>
+        <strong>待处理消息:</strong> <span id="pending-count">0</span>
+      </div>
+      <div>
+        <strong>延迟消息:</strong> <span id="delayed-count">0</span>
+      </div>
+      <div>
+        <strong>死信消息:</strong> <span id="dead-letter-count">0</span>
+      </div>
+      <div>
+        <strong>总消息数:</strong> <span id="total-count">0</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>消费者窗口</h2>
+      <p>点击下面的按钮打开消费者窗口，或者在新标签页中打开此页面并切换到消费者标签。</p>
+      <button id="open-consumer">打开消费者窗口</button>
+    </div>
+  </div>
+  
+  <div id="consumer" class="tab-content">
+    <div class="panel">
+      <h2>主题队列配置</h2>
+      <div>
+        <label>
+          主题名称:
+          <input type="text" id="consumer-topic-name" value="shared-topic">
+        </label>
+      </div>
+      <button id="connect-topic">连接到主题</button>
+    </div>
+
+    <div class="panel">
+      <h2>接收到的消息</h2>
+      <div id="received-messages" class="message-list"></div>
+      <button id="clear-messages">清空消息列表</button>
+    </div>
+  </div>
+
+  <script type="module">
+    // 这里将引入构建后的库
+    // 在实际使用时，替换为正确的路径
+    import { 
+      AdvancedTopicQueue, 
+      MessageStatus
+    } from '../dist/index.mjs';
+
+    // 标签切换
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab).classList.add('active');
+      });
+    });
+
+    // 生产者部分
+    let producerQueue;
+    
+    document.getElementById('create-topic').addEventListener('click', () => {
+      const topicName = document.getElementById('topic-name').value;
+      const storageDriver = document.getElementById('storage-driver').value;
+      const persistenceEnabled = document.getElementById('persistence-enabled').checked;
+      
+      if (!topicName) {
+        alert('请输入主题名称！');
+        return;
+      }
+      
+      producerQueue = new AdvancedTopicQueue(topicName, {
+        persistenceEnabled,
+        persistenceDriver: storageDriver,
+        persistenceInterval: 2000,
+        maxRetries: 3
+      });
+      
+      alert(`主题队列 "${topicName}" 已创建！`);
+      updateQueueStatus();
+      
+      // 设置定时更新
+      setInterval(updateQueueStatus, 1000);
+    });
+    
+    document.getElementById('send-message').addEventListener('click', () => {
+      if (!producerQueue) {
+        alert('请先创建主题队列！');
+        return;
+      }
+      
+      const content = document.getElementById('message-content').value;
+      if (!content) {
+        alert('请输入消息内容！');
+        return;
+      }
+      
+      const priority = parseInt(document.getElementById('message-priority').value);
+      const delay = parseInt(document.getElementById('message-delay').value);
+      
+      const message = producerQueue.enqueue(
+        { 
+          content, 
+          timestamp: new Date().toISOString(),
+          sender: 'Producer'
+        },
+        { priority, delay }
+      );
+      
+      document.getElementById('message-content').value = '';
+      updateQueueStatus();
+      
+      console.log('已发送消息:', message);
+    });
+    
+    document.getElementById('open-consumer').addEventListener('click', () => {
+      const url = new URL(window.location.href);
+      url.hash = 'consumer';
+      window.open(url.toString(), '_blank');
+    });
+    
+    function updateQueueStatus() {
+      if (!producerQueue) return;
+      
+      document.getElementById('pending-count').textContent = producerQueue.size();
+      document.getElementById('delayed-count').textContent = producerQueue.getDelayedMessages().length;
+      document.getElementById('dead-letter-count').textContent = producerQueue.getDeadLetterMessages().length;
+      document.getElementById('total-count').textContent = producerQueue.totalSize();
+    }
+    
+    // 消费者部分
+    let consumerQueue;
+    let unsubscribe;
+    const receivedMessages = [];
+    
+    document.getElementById('connect-topic').addEventListener('click', () => {
+      const topicName = document.getElementById('consumer-topic-name').value;
+      
+      if (!topicName) {
+        alert('请输入主题名称！');
+        return;
+      }
+      
+      // 如果已经订阅，先取消订阅
+      if (unsubscribe) {
+        unsubscribe();
+        unsubscribe = null;
+      }
+      
+      // 创建新的主题队列
+      consumerQueue = new AdvancedTopicQueue(topicName, {
+        persistenceEnabled: false
+      });
+      
+      // 订阅消息
+      unsubscribe = consumerQueue.subscribe(message => {
+        console.log('收到消息:', message);
+        
+        // 添加到接收列表
+        message.receivedAt = new Date().toISOString();
+        receivedMessages.unshift(message); // 新消息放在前面
+        
+        // 更新显示
+        updateReceivedMessages();
+      });
+      
+      alert(`已连接到主题 "${topicName}"！`);
+    });
+    
+    document.getElementById('clear-messages').addEventListener('click', () => {
+      receivedMessages.length = 0;
+      updateReceivedMessages();
+    });
+    
+    function updateReceivedMessages() {
+      const container = document.getElementById('received-messages');
+      
+      if (receivedMessages.length === 0) {
+        container.innerHTML = '<div>没有接收到消息</div>';
+        return;
+      }
+      
+      container.innerHTML = receivedMessages.map(message => `
+        <div class="message-item">
+          <strong>ID:</strong> ${message.id.substring(0, 8)}...<br>
+          <strong>内容:</strong> ${message.data.content}<br>
+          <strong>发送者:</strong> ${message.data.sender}<br>
+          <strong>优先级:</strong> ${message.priority}<br>
+          <strong>发送时间:</strong> ${new Date(message.createdAt).toLocaleString()}<br>
+          <strong>接收时间:</strong> ${new Date(message.receivedAt).toLocaleString()}
+        </div>
+      `).join('');
+    }
+    
+    // 根据URL hash切换标签
+    if (window.location.hash === '#consumer') {
+      document.querySelector('.tab[data-tab="consumer"]').click();
+    }
+  </script>
+</body>
+</html>

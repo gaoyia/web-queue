@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Queue 示例</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      margin-top: 0;
+    }
+    button {
+      margin: 5px;
+      padding: 8px 12px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    input, select {
+      padding: 8px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .message-list {
+      height: 200px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 10px;
+      background-color: #f9f9f9;
+    }
+    .message-item {
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+    }
+    .message-item:last-child {
+      border-bottom: none;
+    }
+    .status-pending { color: #2196F3; }
+    .status-processing { color: #FF9800; }
+    .status-completed { color: #4CAF50; }
+    .status-failed { color: #F44336; }
+    .status-delayed { color: #9C27B0; }
+    .status-dead_letter { color: #795548; }
+  </style>
+</head>
+<body>
+  <h1>Web Queue 高级功能演示</h1>
+  
+  <div class="panel">
+    <h2>队列配置</h2>
+    <div>
+      <label>
+        存储驱动:
+        <select id="storage-driver">
+          <option value="memory">内存</option>
+          <option value="localstorage">LocalStorage</option>
+          <option value="indexeddb">IndexedDB</option>
+        </select>
+      </label>
+    </div>
+    <div>
+      <label>
+        最大重试次数:
+        <input type="number" id="max-retries" value="3" min="0" max="10">
+      </label>
+    </div>
+    <div>
+      <label>
+        重试延迟(毫秒):
+        <input type="number" id="retry-delay" value="2000" min="100" step="100">
+      </label>
+    </div>
+    <div>
+      <label>
+        <input type="checkbox" id="persistence-enabled" checked>
+        启用持久化
+      </label>
+    </div>
+    <button id="create-queue">创建队列</button>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>添加消息</h2>
+      <div>
+        <label>
+          消息内容:
+          <input type="text" id="message-content" placeholder="输入消息内容">
+        </label>
+      </div>
+      <div>
+        <label>
+          消息ID (可选，留空自动生成):
+          <input type="text" id="message-id" placeholder="自定义消息ID">
+        </label>
+      </div>
+      <div>
+        <label>
+          优先级 (0-10):
+          <input type="number" id="message-priority" value="0" min="0" max="10">
+        </label>
+      </div>
+      <div>
+        <label>
+          延迟时间 (毫秒):
+          <input type="number" id="message-delay" value="0" min="0" step="1000">
+        </label>
+      </div>
+      <button id="add-message">添加消息</button>
+    </div>
+
+    <div class="panel">
+      <h2>消息处理</h2>
+      <button id="process-message">处理下一条消息</button>
+      <button id="complete-message">标记处理成功</button>
+      <button id="fail-message">标记处理失败</button>
+      <div id="current-message" class="message-list" style="height: 100px;"></div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>待处理消息</h2>
+      <div id="pending-messages" class="message-list"></div>
+    </div>
+    
+    <div class="panel">
+      <h2>延迟消息</h2>
+      <div id="delayed-messages" class="message-list"></div>
+      <button id="check-delayed">检查延迟消息</button>
+      <button id="cancel-delayed">取消选中的延迟消息</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>死信队列</h2>
+    <div id="dead-letter-messages" class="message-list"></div>
+    <button id="retry-dead-letter">重试选中的死信消息</button>
+  </div>
+
+  <script type="module">
+    // 这里将引入构建后的库
+    // 在实际使用时，替换为正确的路径
+    import { 
+      AdvancedQueue, 
+      MessageStatus,
+      generateUniqueId
+    } from '../dist/index.mjs';
+
+    let queue;
+    let currentMessage = null;
+    
+    // 创建队列
+    document.getElementById('create-queue').addEventListener('click', () => {
+      const storageDriver = document.getElementById('storage-driver').value;
+      const maxRetries = parseInt(document.getElementById('max-retries').value);
+      const retryDelay = parseInt(document.getElementById('retry-delay').value);
+      const persistenceEnabled = document.getElementById('persistence-enabled').checked;
+      
+      queue = new AdvancedQueue({
+        maxRetries,
+        retryDelay,
+        persistenceEnabled,
+        persistenceDriver: storageDriver,
+        persistenceInterval: 2000
+      });
+      
+      alert('队列已创建！');
+      updateMessageLists();
+      
+      // 设置定时更新
+      setInterval(updateMessageLists, 1000);
+    });
+    
+    // 添加消息
+    document.getElementById('add-message').addEventListener('click', () => {
+      if (!queue) {
+        alert('请先创建队列！');
+        return;
+      }
+      
+      const content = document.getElementById('message-content').value;
+      if (!content) {
+        alert('请输入消息内容！');
+        return;
+      }
+      
+      const id = document.getElementById('message-id').value || undefined;
+      const priority = parseInt(document.getElementById('message-priority').value);
+      const delay = parseInt(document.getElementById('message-delay').value);
+      
+      const message = queue.enqueue(
+        { content, timestamp: new Date().toISOString() },
+        { id, priority, delay }
+      );
+      
+      document.getElementById('message-content').value = '';
+      document.getElementById('message-id').value = '';
+      
+      updateMessageLists();
+    });
+    
+    // 处理下一条消息
+    document.getElementById('process-message').addEventListener('click', () => {
+      if (!queue) {
+        alert('请先创建队列！');
+        return;
+      }
+      
+      currentMessage = queue.dequeue();
+      updateCurrentMessage();
+      updateMessageLists();
+    });
+    
+    // 标记处理成功
+    document.getElementById('complete-message').addEventListener('click', () => {
+      if (!currentMessage) {
+        alert('没有正在处理的消息！');
+        return;
+      }
+      
+      queue.complete(currentMessage.id);
+      currentMessage = null;
+      updateCurrentMessage();
+      updateMessageLists();
+    });
+    
+    // 标记处理失败
+    document.getElementById('fail-message').addEventListener('click', () => {
+      if (!currentMessage) {
+        alert('没有正在处理的消息！');
+        return;
+      }
+      
+      queue.fail(currentMessage.id, '手动标记失败');
+      currentMessage = null;
+      updateCurrentMessage();
+      updateMessageLists();
+    });
+    
+    // 检查延迟消息
+    document.getElementById('check-delayed').addEventListener('click', () => {
+      if (!queue) return;
+      updateMessageLists();
+    });
+    
+    // 取消选中的延迟消息
+    document.getElementById('cancel-delayed').addEventListener('click', () => {
+      if (!queue) return;
+      
+      const selected = document.querySelector('#delayed-messages .selected');
+      if (!selected) {
+        alert('请先选择一条延迟消息！');
+        return;
+      }
+      
+      const messageId = selected.dataset.id;
+      queue.cancelDelayed(messageId);
+      updateMessageLists();
+    });
+    
+    // 重试选中的死信消息
+    document.getElementById('retry-dead-letter').addEventListener('click', () => {
+      if (!queue) return;
+      
+      const selected = document.querySelector('#dead-letter-messages .selected');
+      if (!selected) {
+        alert('请先选择一条死信消息！');
+        return;
+      }
+      
+      const messageId = selected.dataset.id;
+      queue.retryDeadLetter(messageId);
+      updateMessageLists();
+    });
+    
+    // 更新当前处理的消息显示
+    function updateCurrentMessage() {
+      const container = document.getElementById('current-message');
+      
+      if (!currentMessage) {
+        container.innerHTML = '<div>没有正在处理的消息</div>';
+        return;
+      }
+      
+      container.innerHTML = `
+        <div class="message-item">
+          <strong>ID:</strong> ${currentMessage.id}<br>
+          <strong>内容:</strong> ${currentMessage.data.content}<br>
+          <strong>状态:</strong> <span class="status-${currentMessage.status}">${currentMessage.status}</span><br>
+          <strong>优先级:</strong> ${currentMessage.priority}<br>
+          <strong>创建时间:</strong> ${new Date(currentMessage.createdAt).toLocaleString()}<br>
+          <strong>处理尝试:</strong> ${currentMessage.processingAttempts}
+        </div>
+      `;
+    }
+    
+    // 更新消息列表显示
+    function updateMessageLists() {
+      if (!queue) return;
+      
+      // 更新待处理消息
+      const pendingContainer = document.getElementById('pending-messages');
+      const pendingMessages = queue.toArray();
+      pendingContainer.innerHTML = pendingMessages.length === 0 
+        ? '<div>没有待处理消息</div>' 
+        : pendingMessages.map(renderMessage).join('');
+      
+      // 更新延迟消息
+      const delayedContainer = document.getElementById('delayed-messages');
+      const delayedMessages = queue.getDelayedMessages();
+      delayedContainer.innerHTML = delayedMessages.length === 0 
+        ? '<div>没有延迟消息</div>' 
+        : delayedMessages.map(renderMessage).join('');
+      
+      // 更新死信队列
+      const deadLetterContainer = document.getElementById('dead-letter-messages');
+      const deadLetterMessages = queue.getDeadLetterMessages();
+      deadLetterContainer.innerHTML = deadLetterMessages.length === 0 
+        ? '<div>没有死信消息</div>' 
+        : deadLetterMessages.map(renderMessage).join('');
+      
+      // 添加点击事件
+      document.querySelectorAll('.message-item').forEach(item => {
+        item.addEventListener('click', () => {
+          document.querySelectorAll('.message-item').forEach(i => i.classList.remove('selected'));
+          item.classList.add('selected');
+        });
+      });
+    }
+    
+    // 渲染单个消息
+    function renderMessage(message) {
+      const delayInfo = message.delayUntil 
+        ? `<br><strong>延迟至:</strong> ${new Date(message.delayUntil).toLocaleString()}` 
+        : '';
+      
+      const failureInfo = message.failureReason 
+        ? `<br><strong>失败原因:</strong> ${message.failureReason}` 
+        : '';
+      
+      return `
+        <div class="message-item" data-id="${message.id}">
+          <strong>ID:</strong> ${message.id.substring(0, 8)}...<br>
+          <strong>内容:</strong> ${message.data.content}<br>
+          <strong>状态:</strong> <span class="status-${message.status}">${message.status}</span><br>
+          <strong>优先级:</strong> ${message.priority}<br>
+          <strong>创建时间:</strong> ${new Date(message.createdAt).toLocaleString()}<br>
+          <strong>处理尝试:</strong> ${message.processingAttempts}
+          ${delayInfo}
+          ${failureInfo}
+        </div>
+      `;
+    }
+    
+    // 添加样式
+    document.head.insertAdjacentHTML('beforeend', `
+      <style>
+        .message-item {
+          cursor: pointer;
+          transition: background-color 0.2s;
+        }
+        .message-item:hover {
+          background-color: #f0f0f0;
+        }
+        .message-item.selected {
+          background-color: #e0e0e0;
+          border-left: 3px solid #4CAF50;
+        }
+      </style>
+    `);
+  </script>
+</body>
+</html>

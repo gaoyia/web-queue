@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>重试与死信队列示例</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      margin-top: 0;
+    }
+    button {
+      margin: 5px;
+      padding: 8px 12px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    input, select {
+      padding: 8px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .message-list {
+      height: 200px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 10px;
+      background-color: #f9f9f9;
+    }
+    .message-item {
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+    .message-item:hover {
+      background-color: #f0f0f0;
+    }
+    .message-item.selected {
+      background-color: #e0e0e0;
+      border-left: 3px solid #4CAF50;
+    }
+    .message-item:last-child {
+      border-bottom: none;
+    }
+    .status-pending { color: #2196F3; }
+    .status-processing { color: #FF9800; }
+    .status-completed { color: #4CAF50; }
+    .status-failed { color: #F44336; }
+    .status-delayed { color: #9C27B0; }
+    .status-dead_letter { color: #795548; }
+    .log {
+      font-family: monospace;
+      background-color: #f5f5f5;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 10px;
+      height: 150px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      margin: 2px 0;
+      padding: 2px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .log-entry.info { color: #2196F3; }
+    .log-entry.success { color: #4CAF50; }
+    .log-entry.warning { color: #FF9800; }
+    .log-entry.error { color: #F44336; }
+  </style>
+</head>
+<body>
+  <h1>重试与死信队列示例</h1>
+  
+  <div class="panel">
+    <h2>队列配置</h2>
+    <div class="container">
+      <div>
+        <label>
+          最大重试次数:
+          <input type="number" id="max-retries" value="3" min="0" max="10">
+        </label>
+      </div>
+      <div>
+        <label>
+          重试延迟(毫秒):
+          <input type="number" id="retry-delay" value="2000" min="100" step="100">
+        </label>
+      </div>
+    </div>
+    <button id="create-queue">创建队列</button>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>添加消息</h2>
+      <div>
+        <label>
+          消息内容:
+          <input type="text" id="message-content" placeholder="输入消息内容">
+        </label>
+      </div>
+      <div>
+        <label>
+          处理成功概率 (0-100%):
+          <input type="number" id="success-rate" value="50" min="0" max="100">
+        </label>
+      </div>
+      <button id="add-message">添加消息</button>
+    </div>
+
+    <div class="panel">
+      <h2>消息处理</h2>
+      <button id="process-message">处理下一条消息</button>
+      <button id="process-all">处理所有消息</button>
+      <div>
+        <label>
+          <input type="checkbox" id="auto-process" checked>
+          自动处理消息
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>待处理消息</h2>
+      <div id="pending-messages" class="message-list"></div>
+    </div>
+    
+    <div class="panel">
+      <h2>死信队列</h2>
+      <div id="dead-letter-messages" class="message-list"></div>
+      <button id="retry-selected">重试选中的死信消息</button>
+      <button id="retry-all">重试所有死信消息</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>操作日志</h2>
+    <div id="log" class="log"></div>
+    <button id="clear-log">清空日志</button>
+  </div>
+
+  <script type="module">
+    // 这里将引入构建后的库
+    // 在实际使用时，替换为正确的路径
+    import { 
+      AdvancedQueue, 
+      MessageStatus
+    } from '../dist/index.mjs';
+
+    let queue;
+    let selectedDeadLetterMessageId = null;
+    let processingInterval = null;
+    
+    // 初始化队列
+    document.getElementById('create-queue').addEventListener('click', () => {
+      const maxRetries = parseInt(document.getElementById('max-retries').value);
+      const retryDelay = parseInt(document.getElementById('retry-delay').value);
+      
+      // 清除之前的自动处理定时器
+      if (processingInterval) {
+        clearInterval(processingInterval);
+        processingInterval = null;
+      }
+      
+      queue = new AdvancedQueue({
+        maxRetries,
+        retryDelay
+      });
+      
+      log('info', `队列已创建 - 最大重试次数: ${maxRetries}, 重试延迟: ${retryDelay}ms`);
+      updateMessageLists();
+      
+      // 设置自动处理
+      if (document.getElementById('auto-process').checked) {
+        startAutoProcessing();
+      }
+    });
+    
+    // 添加消息
+    document.getElementById('add-message').addEventListener('click', () => {
+      if (!queue) {
+        log('error', '请先创建队列！');
+        return;
+      }
+      
+      const content = document.getElementById('message-content').value;
+      if (!content) {
+        log('error', '请输入消息内容');
+        return;
+      }
+      
+      const successRate = parseInt(document.getElementById('success-rate').value);
+      
+      const message = queue.enqueue({
+        content,
+        timestamp: new Date().toISOString(),
+        successRate
+      });
+      
+      log('success', `消息已添加 - ID: ${message.id}, 内容: ${content}, 成功率: ${successRate}%`);
+      document.getElementById('message-content').value = '';
+      updateMessageLists();
+    });
+    
+    // 处理下一条消息
+    document.getElementById('process-message').addEventListener('click', () => {
+      processNextMessage();
+    });
+    
+    // 处理所有消息
+    document.getElementById('process-all').addEventListener('click', () => {
+      if (!queue) {
+        log('error', '请先创建队列！');
+        return;
+      }
+      
+      const processAll = async () => {
+        while (queue.size() > 0) {
+          await processNextMessage();
+        }
+      };
+      
+      processAll();
+    });
+    
+    // 自动处理开关
+    document.getElementById('auto-process').addEventListener('change', (e) => {
+      if (e.target.checked) {
+        startAutoProcessing();
+      } else {
+        stopAutoProcessing();
+      }
+    });
+    
+    // 重试选中的死信消息
+    document.getElementById('retry-selected').addEventListener('click', () => {
+      if (!queue) {
+        log('error', '请先创建队列！');
+        return;
+      }
+      
+      if (!selectedDeadLetterMessageId) {
+        log('error', '请先选择一条死信消息');
+        return;
+      }
+      
+      const result = queue.retryDeadLetter(selectedDeadLetterMessageId);
+      if (result) {
+        log('success', `死信消息 ${selectedDeadLetterMessageId} 已重新入队`);
+      } else {
+        log('error', `重试死信消息 ${selectedDeadLetterMessageId} 失败`);
+      }
+      
+      selectedDeadLetterMessageId = null;
+      updateMessageLists();
+    });
+    
+    // 重试所有死信消息
+    document.getElementById('retry-all').addEventListener('click', () => {
+      if (!queue) {
+        log('error', '请先创建队列！');
+        return;
+      }
+      
+      const deadLetterMessages = queue.getDeadLetterMessages();
+      if (deadLetterMessages.length === 0) {
+        log('info', '死信队列为空');
+        return;
+      }
+      
+      let retryCount = 0;
+      deadLetterMessages.forEach(message => {
+        if (queue.retryDeadLetter(message.id)) {
+          retryCount++;
+        }
+      });
+      
+      log('success', `已重试 ${retryCount} 条死信消息`);
+      updateMessageLists();
+    });
+    
+    // 清空日志
+    document.getElementById('clear-log').addEventListener('click', () => {
+      document.getElementById('log').innerHTML = '';
+    });
+    
+    // 处理下一条消息
+    async function processNextMessage() {
+      if (!queue) {
+        log('error', '请先创建队列！');
+        return false;
+      }
+      
+      const message = queue.dequeue();
+      if (!message) {
+        log('info', '队列为空，没有消息可处理');
+        return false;
+      }
+      
+      log('info', `正在处理消息 - ID: ${message.id}, 内容: ${message.data.content}, 尝试次数: ${message.processingAttempts}`);
+      
+      // 模拟异步处理
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 根据成功率决定是否成功
+      const successRate = message.data.successRate || 50;
+      const isSuccess = Math.random() * 100 < successRate;
+      
+      if (isSuccess) {
+        queue.complete(message.id);
+        log('success', `消息处理成功 - ID: ${message.id}`);
+      } else {
+        const failReason = `处理失败 (成功率: ${successRate}%)`;
+        queue.fail(message.id, failReason);
+        log('error', `消息处理失败 - ID: ${message.id}, 原因: ${failReason}, 尝试次数: ${message.processingAttempts}`);
+      }
+      
+      updateMessageLists();
+      return true;
+    }
+    
+    // 开始自动处理
+    function startAutoProcessing() {
+      if (processingInterval) {
+        clearInterval(processingInterval);
+      }
+      
+      processingInterval = setInterval(async () => {
+        if (queue && queue.size() > 0) {
+          await processNextMessage();
+        }
+      }, 1000);
+      
+      log('info', '已启动自动处理');
+    }
+    
+    // 停止自动处理
+    function stopAutoProcessing() {
+      if (processingInterval) {
+        clearInterval(processingInterval);
+        processingInterval = null;
+        log('info', '已停止自动处理');
+      }
+    }
+    
+    // 更新消息列表
+    function updateMessageLists() {
+      if (!queue) return;
+      
+      // 更新待处理消息
+      const pendingContainer = document.getElementById('pending-messages');
+      const pendingMessages = queue.toArray();
+      pendingContainer.innerHTML = pendingMessages.length === 0 
+        ? '<div>没有待处理消息</div>' 
+        : pendingMessages.map(renderMessage).join('');
+      
+      // 更新死信队列
+      const deadLetterContainer = document.getElementById('dead-letter-messages');
+      const deadLetterMessages = queue.getDeadLetterMessages();
+      deadLetterContainer.innerHTML = deadLetterMessages.length === 0 
+        ? '<div>没有死信消息</div>' 
+        : deadLetterMessages.map(message => renderMessage(message, true)).join('');
+      
+      // 添加死信消息选择事件
+      document.querySelectorAll('#dead-letter-messages .message-item').forEach(item => {
+        item.addEventListener('click', () => {
+          document.querySelectorAll('#dead-letter-messages .message-item').forEach(i => i.classList.remove('selected'));
+          item.classList.add('selected');
+          selectedDeadLetterMessageId = item.dataset.id;
+        });
+      });
+    }
+    
+    // 渲染单个消息
+    function renderMessage(message, isDeadLetter = false) {
+      const statusClass = `status-${message.status.toLowerCase()}`;
+      const failureInfo = message.failureReason 
+        ? `<br><strong>失败原因:</strong> ${message.failureReason}` 
+        : '';
+      
+      return `
+        <div class="message-item" data-id="${message.id}">
+          <strong>ID:</strong> ${message.id.substring(0, 8)}...<br>
+          <strong>内容:</strong> ${message.data.content}<br>
+          <strong>状态:</strong> <span class="${statusClass}">${message.status}</span><br>
+          <strong>成功率:</strong> ${message.data.successRate}%<br>
+          <strong>处理尝试:</strong> ${message.processingAttempts}
+          ${failureInfo}
+        </div>
+      `;
+    }
+    
+    // 添加日志
+    function log(type, message) {
+      const logContainer = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logContainer.appendChild(entry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    // 初始化说明
+    log('info', '欢迎使用重试与死信队列示例');
+    log('info', '1. 设置最大重试次数和重试延迟，然后创建队列');
+    log('info', '2. 添加消息并设置处理成功率');
+    log('info', '3. 使用"处理下一条消息"按钮手动处理，或启用自动处理');
+    log('info', '4. 观察消息处理、重试和进入死信队列的过程');
+    log('info', '5. 使用"重试选中的死信消息"或"重试所有死信消息"按钮将死信消息重新入队');
+  </script>
+</body>
+</html>

@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>延迟队列示例</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      margin-top: 0;
+    }
+    button {
+      margin: 5px;
+      padding: 8px 12px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    input, select {
+      padding: 8px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .message-list {
+      height: 200px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 10px;
+      background-color: #f9f9f9;
+    }
+    .message-item {
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+    }
+    .message-item:hover {
+      background-color: #f0f0f0;
+    }
+    .message-item.selected {
+      background-color: #e0e0e0;
+      border-left: 3px solid #4CAF50;
+    }
+    .message-item:last-child {
+      border-bottom: none;
+    }
+    .status-pending { color: #2196F3; }
+    .status-processing { color: #FF9800; }
+    .status-completed { color: #4CAF50; }
+    .status-failed { color: #F44336; }
+    .status-delayed { color: #9C27B0; }
+    .status-dead_letter { color: #795548; }
+    .timer {
+      font-size: 24px;
+      font-weight: bold;
+      text-align: center;
+      margin: 10px 0;
+    }
+    .progress-container {
+      width: 100%;
+      background-color: #f1f1f1;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+    .progress-bar {
+      height: 20px;
+      background-color: #4CAF50;
+      border-radius: 5px;
+      width: 0%;
+      transition: width 1s linear;
+    }
+    .log {
+      font-family: monospace;
+      background-color: #f5f5f5;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 10px;
+      height: 150px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      margin: 2px 0;
+      padding: 2px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .log-entry.info { color: #2196F3; }
+    .log-entry.success { color: #4CAF50; }
+    .log-entry.warning { color: #FF9800; }
+    .log-entry.error { color: #F44336; }
+  </style>
+</head>
+<body>
+  <h1>延迟队列示例</h1>
+  
+  <div class="panel">
+    <h2>当前时间</h2>
+    <div class="timer" id="current-time"></div>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>添加延迟消息</h2>
+      <div>
+        <label>
+          消息内容:
+          <input type="text" id="message-content" placeholder="输入消息内容">
+        </label>
+      </div>
+      <div>
+        <label>
+          延迟时间 (秒):
+          <input type="number" id="delay-seconds" value="10" min="1" max="60">
+        </label>
+      </div>
+      <div class="progress-container" id="progress-container" style="display: none;">
+        <div class="progress-bar" id="progress-bar"></div>
+      </div>
+      <button id="add-message">添加延迟消息</button>
+    </div>
+
+    <div class="panel">
+      <h2>预定时间</h2>
+      <div>
+        <label>
+          消息内容:
+          <input type="text" id="scheduled-content" placeholder="输入消息内容">
+        </label>
+      </div>
+      <div>
+        <label>
+          预定时间 (秒后):
+          <input type="number" id="scheduled-seconds" value="30" min="1" max="300">
+        </label>
+      </div>
+      <div>
+        <strong>将在此时执行: </strong>
+        <span id="scheduled-time"></span>
+      </div>
+      <button id="add-scheduled">添加预定消息</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>待处理消息</h2>
+      <div id="pending-messages" class="message-list"></div>
+    </div>
+    
+    <div class="panel">
+      <h2>延迟消息</h2>
+      <div id="delayed-messages" class="message-list"></div>
+      <button id="cancel-selected">取消选中的延迟消息</button>
+      <button id="check-delayed">检查延迟消息</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>操作日志</h2>
+    <div id="log" class="log"></div>
+    <button id="clear-log">清空日志</button>
+  </div>
+
+  <script type="module">
+    // 这里将引入构建后的库
+    // 在实际使用时，替换为正确的路径
+    import { 
+      AdvancedQueue, 
+      MessageStatus
+    } from '../dist/index.mjs';
+
+    let queue;
+    let selectedDelayedMessageId = null;
+    let updateInterval;
+    
+    // 初始化队列
+    function initQueue() {
+      queue = new AdvancedQueue();
+      log('info', '队列已初始化');
+      updateMessageLists();
+      
+      // 设置定时更新
+      updateInterval = setInterval(() => {
+        updateCurrentTime();
+        updateMessageLists();
+      }, 1000);
+    }
+    
+    // 添加延迟消息
+    document.getElementById('add-message').addEventListener('click', () => {
+      const content = document.getElementById('message-content').value;
+      if (!content) {
+        log('error', '请输入消息内容');
+        return;
+      }
+      
+      const delaySeconds = parseInt(document.getElementById('delay-seconds').value);
+      if (isNaN(delaySeconds) || delaySeconds < 1) {
+        log('error', '请输入有效的延迟时间');
+        return;
+      }
+      
+      const message = queue.enqueue(
+        { 
+          content, 
+          timestamp: new Date().toISOString(),
+          type: 'delayed'
+        },
+        { delay: delaySeconds * 1000 }
+      );
+      
+      log('success', `延迟消息已添加 - ID: ${message.id}, 内容: ${content}, 延迟: ${delaySeconds}秒`);
+      document.getElementById('message-content').value = '';
+      
+      // 显示进度条
+      showProgressBar(delaySeconds);
+      
+      updateMessageLists();
+    });
+    
+    // 添加预定消息
+    document.getElementById('add-scheduled').addEventListener('click', () => {
+      const content = document.getElementById('scheduled-content').value;
+      if (!content) {
+        log('error', '请输入消息内容');
+        return;
+      }
+      
+      const scheduledSeconds = parseInt(document.getElementById('scheduled-seconds').value);
+      if (isNaN(scheduledSeconds) || scheduledSeconds < 1) {
+        log('error', '请输入有效的预定时间');
+        return;
+      }
+      
+      const scheduledTime = new Date(Date.now() + scheduledSeconds * 1000);
+      
+      const message = queue.enqueue(
+        { 
+          content, 
+          timestamp: new Date().toISOString(),
+          scheduledTime: scheduledTime.toISOString(),
+          type: 'scheduled'
+        },
+        { delay: scheduledSeconds * 1000 }
+      );
+      
+      log('success', `预定消息已添加 - ID: ${message.id}, 内容: ${content}, 预定时间: ${scheduledTime.toLocaleTimeString()}`);
+      document.getElementById('scheduled-content').value = '';
+      updateMessageLists();
+    });
+    
+    // 取消选中的延迟消息
+    document.getElementById('cancel-selected').addEventListener('click', () => {
+      if (!selectedDelayedMessageId) {
+        log('error', '请先选择一条延迟消息');
+        return;
+      }
+      
+      const result = queue.cancelDelayed(selectedDelayedMessageId);
+      if (result) {
+        log('success', `延迟消息 ${selectedDelayedMessageId} 已取消`);
+      } else {
+        log('error', `取消延迟消息 ${selectedDelayedMessageId} 失败`);
+      }
+      
+      selectedDelayedMessageId = null;
+      updateMessageLists();
+    });
+    
+    // 检查延迟消息
+    document.getElementById('check-delayed').addEventListener('click', () => {
+      const delayedMessages = queue.getDelayedMessages();
+      log('info', `当前有 ${delayedMessages.length} 条延迟消息`);
+      
+      delayedMessages.forEach(message => {
+        const delayUntil = new Date(message.delayUntil);
+        const now = new Date();
+        const remainingMs = Math.max(0, delayUntil - now);
+        const remainingSeconds = Math.ceil(remainingMs / 1000);
+        
+        log('info', `消息 ${message.id}: "${message.data.content}" 将在 ${remainingSeconds} 秒后可用`);
+      });
+    });
+    
+    // 清空日志
+    document.getElementById('clear-log').addEventListener('click', () => {
+      document.getElementById('log').innerHTML = '';
+    });
+    
+    // 更新当前时间
+    function updateCurrentTime() {
+      const now = new Date();
+      document.getElementById('current-time').textContent = now.toLocaleTimeString();
+      
+      // 更新预定时间显示
+      const scheduledSeconds = parseInt(document.getElementById('scheduled-seconds').value) || 0;
+      const scheduledTime = new Date(Date.now() + scheduledSeconds * 1000);
+      document.getElementById('scheduled-time').textContent = scheduledTime.toLocaleTimeString();
+    }
+    
+    // 显示进度条
+    function showProgressBar(totalSeconds) {
+      const progressContainer = document.getElementById('progress-container');
+      const progressBar = document.getElementById('progress-bar');
+      
+      progressContainer.style.display = 'block';
+      progressBar.style.width = '0%';
+      
+      let secondsElapsed = 0;
+      const interval = setInterval(() => {
+        secondsElapsed++;
+        const percentage = Math.min(100, (secondsElapsed / totalSeconds) * 100);
+        progressBar.style.width = `${percentage}%`;
+        
+        if (secondsElapsed >= totalSeconds) {
+          clearInterval(interval);
+          setTimeout(() => {
+            progressContainer.style.display = 'none';
+          }, 1000);
+        }
+      }, 1000);
+    }
+    
+    // 更新消息列表
+    function updateMessageLists() {
+      // 更新待处理消息
+      const pendingContainer = document.getElementById('pending-messages');
+      const pendingMessages = queue.toArray();
+      pendingContainer.innerHTML = pendingMessages.length === 0 
+        ? '<div>没有待处理消息</div>' 
+        : pendingMessages.map(renderMessage).join('');
+      
+      // 更新延迟消息
+      const delayedContainer = document.getElementById('delayed-messages');
+      const delayedMessages = queue.getDelayedMessages();
+      delayedContainer.innerHTML = delayedMessages.length === 0 
+        ? '<div>没有延迟消息</div>' 
+        : delayedMessages.map(message => renderDelayedMessage(message)).join('');
+      
+      // 添加延迟消息选择事件
+      document.querySelectorAll('#delayed-messages .message-item').forEach(item => {
+        item.addEventListener('click', () => {
+          document.querySelectorAll('#delayed-messages .message-item').forEach(i => i.classList.remove('selected'));
+          item.classList.add('selected');
+          selectedDelayedMessageId = item.dataset.id;
+        });
+      });
+    }
+    
+    // 渲染单个消息
+    function renderMessage(message) {
+      const statusClass = `status-${message.status.toLowerCase()}`;
+      
+      return `
+        <div class="message-item" data-id="${message.id}">
+          <strong>ID:</strong> ${message.id.substring(0, 8)}...<br>
+          <strong>内容:</strong> ${message.data.content}<br>
+          <strong>状态:</strong> <span class="${statusClass}">${message.status}</span><br>
+          <strong>类型:</strong> ${message.data.type || '标准'}<br>
+          <strong>创建时间:</strong> ${new Date(message.createdAt).toLocaleTimeString()}
+        </div>
+      `;
+    }
+    
+    // 渲染延迟消息
+    function renderDelayedMessage(message) {
+      const now = new Date();
+      const delayUntil = new Date(message.delayUntil);
+      const remainingMs = Math.max(0, delayUntil - now);
+      const remainingSeconds = Math.ceil(remainingMs / 1000);
+      
+      return `
+        <div class="message-item" data-id="${message.id}">
+          <strong>ID:</strong> ${message.id.substring(0, 8)}...<br>
+          <strong>内容:</strong> ${message.data.content}<br>
+          <strong>状态:</strong> <span class="status-delayed">延迟中</span><br>
+          <strong>类型:</strong> ${message.data.type || '标准'}<br>
+          <strong>延迟至:</strong> ${delayUntil.toLocaleTimeString()}<br>
+          <strong>剩余时间:</strong> ${remainingSeconds} 秒
+        </div>
+      `;
+    }
+    
+    // 添加日志
+    function log(type, message) {
+      const logContainer = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logContainer.appendChild(entry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    // 初始化
+    initQueue();
+    updateCurrentTime();
+    
+    // 初始化说明
+    log('info', '欢迎使用延迟队列示例');
+    log('info', '1. 添加延迟消息: 指定延迟秒数后消息可用');
+    log('info', '2. 添加预定消息: 在特定时间点执行');
+    log('info', '3. 使用"取消选中的延迟消息"按钮取消延迟消息');
+    log('info', '4. 使用"检查延迟消息"按钮查看延迟消息状态');
+  </script>
+</body>
+</html>

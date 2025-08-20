@@ -1,133 +1,41 @@
 /**
- * Queue implementation that works in both browser and Node.js environments
+ * Web Queue - A browser and Node.js compatible queue library
  */
-export class Queue<T> {
-  private items: T[] = [];
 
-  /**
-   * Add an item to the queue
-   * @param item The item to add
-   */
-  enqueue(item: T): void {
-    this.items.push(item);
-  }
+// Export basic queue implementations
+export { Queue } from './core/queue';
+export { TopicQueue } from './core/topic-queue';
 
-  /**
-   * Remove and return the first item in the queue
-   * @returns The first item in the queue or undefined if queue is empty
-   */
-  dequeue(): T | undefined {
-    return this.items.shift();
-  }
+// Export advanced queue implementations
+export { AdvancedQueue } from './core/advanced-queue';
+export { AdvancedTopicQueue } from './core/advanced-topic-queue';
 
-  /**
-   * View the first item without removing it
-   * @returns The first item in the queue or undefined if queue is empty
-   */
-  peek(): T | undefined {
-    return this.items[0];
-  }
+// Export storage drivers
+export { 
+  MemoryStorageDriver,
+  LocalStorageDriver,
+  IndexedDBStorageDriver,
+  createStorageDriver
+} from './storage/drivers';
 
-  /**
-   * Get the current size of the queue
-   * @returns The number of items in the queue
-   */
-  size(): number {
-    return this.items.length;
-  }
+// Export types and utilities
+export {
+  Message,
+  MessageStatus,
+  QueueOptions,
+  DEFAULT_QUEUE_OPTIONS,
+  StorageDriver
+} from './utils/types';
 
-  /**
-   * Check if the queue is empty
-   * @returns True if the queue is empty, false otherwise
-   */
-  isEmpty(): boolean {
-    return this.items.length === 0;
-  }
+export {
+  generateUniqueId,
+  sortByPriorityAndTime,
+  deepClone,
+  isBrowser,
+  isIndexedDBAvailable,
+  isLocalStorageAvailable
+} from './utils/helpers';
 
-  /**
-   * Clear all items from the queue
-   */
-  clear(): void {
-    this.items = [];
-  }
-
-  /**
-   * Convert the queue to an array
-   * @returns An array containing all items in the queue
-   */
-  toArray(): T[] {
-    return [...this.items];
-  }
-}
-
-/**
- * Topic-based queue implementation using BroadcastChannel for communication
- * Works in browser environments that support BroadcastChannel API
- */
-export class TopicQueue<T> extends Queue<T> {
-  private channel: BroadcastChannel | null = null;
-  
-  /**
-   * Create a new TopicQueue with an optional topic name
-   * @param topicName The name of the topic/channel to use
-   */
-  constructor(topicName?: string) {
-    super();
-    
-    // Only initialize BroadcastChannel if we're in a browser environment that supports it
-    if (typeof BroadcastChannel !== 'undefined' && topicName) {
-      try {
-        this.channel = new BroadcastChannel(topicName);
-      } catch (error) {
-        console.warn(`Failed to create BroadcastChannel: ${error}`);
-      }
-    }
-  }
-  
-  /**
-   * Add an item to the queue and broadcast it to the channel
-   * @param item The item to add
-   */
-  enqueue(item: T): void {
-    super.enqueue(item);
-    
-    // Broadcast the item to the channel if available
-    if (this.channel) {
-      this.channel.postMessage(item);
-    }
-  }
-  
-  /**
-   * Subscribe to messages on this topic
-   * @param callback Function to call when a message is received
-   * @returns A function to unsubscribe
-   */
-  subscribe(callback: (item: T) => void): () => void {
-    if (!this.channel) {
-      console.warn('BroadcastChannel not available, subscription will not work');
-      return () => {}; // No-op unsubscribe function
-    }
-    
-    const messageHandler = (event: MessageEvent) => {
-      callback(event.data);
-    };
-    
-    this.channel.addEventListener('message', messageHandler);
-    
-    // Return unsubscribe function
-    return () => {
-      this.channel?.removeEventListener('message', messageHandler);
-    };
-  }
-  
-  /**
-   * Close the channel when done
-   */
-  close(): void {
-    this.channel?.close();
-    this.channel = null;
-  }
-}
-
-// Export default and named exports
+// Default export
+import { Queue } from './core/queue';
 export default Queue;

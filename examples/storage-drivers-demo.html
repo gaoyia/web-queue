@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>存储驱动示例</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      margin-top: 0;
+    }
+    button {
+      margin: 5px;
+      padding: 8px 12px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    input, select, textarea {
+      padding: 8px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    textarea {
+      height: 100px;
+      font-family: monospace;
+    }
+    .result {
+      background-color: #f9f9f9;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 10px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+    .success {
+      color: #4CAF50;
+    }
+    .error {
+      color: #F44336;
+    }
+  </style>
+</head>
+<body>
+  <h1>Web Queue 存储驱动示例</h1>
+  
+  <div class="panel">
+    <h2>存储驱动选择</h2>
+    <div>
+      <label>
+        存储驱动:
+        <select id="storage-driver">
+          <option value="memory">内存存储 (MemoryStorageDriver)</option>
+          <option value="localstorage">本地存储 (LocalStorageDriver)</option>
+          <option value="indexeddb">IndexedDB存储 (IndexedDBStorageDriver)</option>
+        </select>
+      </label>
+    </div>
+    <div>
+      <label id="prefix-label" style="display: none;">
+        存储前缀:
+        <input type="text" id="storage-prefix" value="demo-">
+      </label>
+    </div>
+    <div>
+      <label id="db-label" style="display: none;">
+        数据库名称:
+        <input type="text" id="db-name" value="web-queue-demo">
+      </label>
+    </div>
+    <div>
+      <label id="store-label" style="display: none;">
+        存储名称:
+        <input type="text" id="store-name" value="demo-store">
+      </label>
+    </div>
+    <button id="create-driver">创建存储驱动</button>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>保存数据</h2>
+      <div>
+        <label>
+          键名:
+          <input type="text" id="save-key" placeholder="输入键名">
+        </label>
+      </div>
+      <div>
+        <label>
+          数据 (JSON):
+          <textarea id="save-data" placeholder='{"example": "data"}'></textarea>
+        </label>
+      </div>
+      <button id="save-button">保存数据</button>
+      <div id="save-result" class="result"></div>
+    </div>
+
+    <div class="panel">
+      <h2>加载数据</h2>
+      <div>
+        <label>
+          键名:
+          <input type="text" id="load-key" placeholder="输入键名">
+        </label>
+      </div>
+      <button id="load-button">加载数据</button>
+      <div id="load-result" class="result"></div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>删除数据</h2>
+      <div>
+        <label>
+          键名:
+          <input type="text" id="delete-key" placeholder="输入键名">
+        </label>
+      </div>
+      <button id="delete-button">删除数据</button>
+      <div id="delete-result" class="result"></div>
+    </div>
+
+    <div class="panel">
+      <h2>清空存储</h2>
+      <p>警告：这将删除所有由当前驱动管理的数据！</p>
+      <button id="clear-button">清空存储</button>
+      <div id="clear-result" class="result"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>环境检测</h2>
+    <button id="check-env">检测环境</button>
+    <div id="env-result" class="result"></div>
+  </div>
+
+  <script type="module">
+    // 这里将引入构建后的库
+    // 在实际使用时，替换为正确的路径
+    import { 
+      MemoryStorageDriver,
+      LocalStorageDriver,
+      IndexedDBStorageDriver,
+      createStorageDriver,
+      isBrowser,
+      isLocalStorageAvailable,
+      isIndexedDBAvailable
+    } from '../dist/index.mjs';
+
+    let storageDriver = null;
+    
+    // 根据选择的驱动类型显示相关选项
+    document.getElementById('storage-driver').addEventListener('change', updateDriverOptions);
+    
+    function updateDriverOptions() {
+      const driverType = document.getElementById('storage-driver').value;
+      
+      // 重置所有选项
+      document.getElementById('prefix-label').style.display = 'none';
+      document.getElementById('db-label').style.display = 'none';
+      document.getElementById('store-label').style.display = 'none';
+      
+      // 根据驱动类型显示相关选项
+      if (driverType === 'localstorage') {
+        document.getElementById('prefix-label').style.display = 'block';
+      } else if (driverType === 'indexeddb') {
+        document.getElementById('db-label').style.display = 'block';
+        document.getElementById('store-label').style.display = 'block';
+      }
+    }
+    
+    // 初始化时调用一次
+    updateDriverOptions();
+    
+    // 创建存储驱动
+    document.getElementById('create-driver').addEventListener('click', () => {
+      const driverType = document.getElementById('storage-driver').value;
+      
+      try {
+        if (driverType === 'memory') {
+          storageDriver = new MemoryStorageDriver();
+        } else if (driverType === 'localstorage') {
+          const prefix = document.getElementById('storage-prefix').value;
+          storageDriver = new LocalStorageDriver(prefix);
+        } else if (driverType === 'indexeddb') {
+          const dbName = document.getElementById('db-name').value;
+          const storeName = document.getElementById('store-name').value;
+          storageDriver = new IndexedDBStorageDriver(dbName, storeName);
+        }
+        
+        alert(`${driverType} 存储驱动创建成功！`);
+      } catch (error) {
+        alert(`创建存储驱动失败: ${error.message}`);
+        console.error('创建存储驱动失败:', error);
+      }
+    });
+    
+    // 保存数据
+    document.getElementById('save-button').addEventListener('click', async () => {
+      if (!storageDriver) {
+        showResult('save-result', '请先创建存储驱动！', 'error');
+        return;
+      }
+      
+      const key = document.getElementById('save-key').value;
+      if (!key) {
+        showResult('save-result', '请输入键名！', 'error');
+        return;
+      }
+      
+      const dataStr = document.getElementById('save-data').value;
+      if (!dataStr) {
+        showResult('save-result', '请输入数据！', 'error');
+        return;
+      }
+      
+      try {
+        const data = JSON.parse(dataStr);
+        await storageDriver.save(key, data);
+        showResult('save-result', `数据已成功保存到键 "${key}"`, 'success');
+      } catch (error) {
+        showResult('save-result', `保存数据失败: ${error.message}`, 'error');
+        console.error('保存数据失败:', error);
+      }
+    });
+    
+    // 加载数据
+    document.getElementById('load-button').addEventListener('click', async () => {
+      if (!storageDriver) {
+        showResult('load-result', '请先创建存储驱动！', 'error');
+        return;
+      }
+      
+      const key = document.getElementById('load-key').value;
+      if (!key) {
+        showResult('load-result', '请输入键名！', 'error');
+        return;
+      }
+      
+      try {
+        const data = await storageDriver.load(key);
+        if (data === null) {
+          showResult('load-result', `未找到键 "${key}" 的数据`, 'error');
+        } else {
+          showResult('load-result', JSON.stringify(data, null, 2), 'success');
+        }
+      } catch (error) {
+        showResult('load-result', `加载数据失败: ${error.message}`, 'error');
+        console.error('加载数据失败:', error);
+      }
+    });
+    
+    // 删除数据
+    document.getElementById('delete-button').addEventListener('click', async () => {
+      if (!storageDriver) {
+        showResult('delete-result', '请先创建存储驱动！', 'error');
+        return;
+      }
+      
+      const key = document.getElementById('delete-key').value;
+      if (!key) {
+        showResult('delete-result', '请输入键名！', 'error');
+        return;
+      }
+      
+      try {
+        await storageDriver.delete(key);
+        showResult('delete-result', `键 "${key}" 的数据已成功删除`, 'success');
+      } catch (error) {
+        showResult('delete-result', `删除数据失败: ${error.message}`, 'error');
+        console.error('删除数据失败:', error);
+      }
+    });
+    
+    // 清空存储
+    document.getElementById('clear-button').addEventListener('click', async () => {
+      if (!storageDriver) {
+        showResult('clear-result', '请先创建存储驱动！', 'error');
+        return;
+      }
+      
+      if (!confirm('确定要清空所有数据吗？此操作不可撤销！')) {
+        return;
+      }
+      
+      try {
+        await storageDriver.clear();
+        showResult('clear-result', '存储已成功清空', 'success');
+      } catch (error) {
+        showResult('clear-result', `清空存储失败: ${error.message}`, 'error');
+        console.error('清空存储失败:', error);
+      }
+    });
+    
+    // 检测环境
+    document.getElementById('check-env').addEventListener('click', () => {
+      const results = [
+        `浏览器环境: ${isBrowser() ? '是' : '否'}`,
+        `LocalStorage可用: ${isLocalStorageAvailable() ? '是' : '否'}`,
+        `IndexedDB可用: ${isIndexedDBAvailable() ? '是' : '否'}`
+      ];
+      
+      showResult('env-result', results.join('\n'), 'success');
+    });
+    
+    // 显示结果
+    function showResult(elementId, message, type) {
+      const element = document.getElementById(elementId);
+      element.textContent = message;
+      element.className = `result ${type}`;
+    }
+  </script>
+</body>
+</html>

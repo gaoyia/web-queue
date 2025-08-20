@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>消息幂等性示例</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .panel {
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      padding: 15px;
+      margin-bottom: 20px;
+    }
+    h2 {
+      margin-top: 0;
+    }
+    button {
+      margin: 5px;
+      padding: 8px 12px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    input, select {
+      padding: 8px;
+      margin: 5px 0;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .message-list {
+      height: 200px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 10px;
+      background-color: #f9f9f9;
+    }
+    .message-item {
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+    }
+    .message-item:last-child {
+      border-bottom: none;
+    }
+    .highlight {
+      background-color: #ffffcc;
+    }
+    .log {
+      font-family: monospace;
+      background-color: #f5f5f5;
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 10px;
+      height: 150px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      margin: 2px 0;
+      padding: 2px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .log-entry.info { color: #2196F3; }
+    .log-entry.success { color: #4CAF50; }
+    .log-entry.warning { color: #FF9800; }
+    .log-entry.error { color: #F44336; }
+  </style>
+</head>
+<body>
+  <h1>消息幂等性示例</h1>
+  
+  <div class="panel">
+    <h2>幂等性演示</h2>
+    <p>
+      本示例演示了如何使用 <code>AdvancedQueue</code> 的幂等性功能。
+      通过为消息指定唯一ID，可以确保即使多次发送相同ID的消息，队列中也只会存在一个实例。
+    </p>
+  </div>
+
+  <div class="container">
+    <div class="panel">
+      <h2>发送消息</h2>
+      <div>
+        <label>
+          消息内容:
+          <input type="text" id="message-content" placeholder="输入消息内容">
+        </label>
+      </div>
+      <div>
+        <label>
+          消息ID:
+          <input type="text" id="message-id" placeholder="输入唯一ID (可选)">
+        </label>
+      </div>
+      <div>
+        <button id="generate-id">生成随机ID</button>
+        <button id="send-message">发送消息</button>
+        <button id="send-duplicate">发送重复消息</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>队列状态</h2>
+      <div id="queue-messages" class="message-list"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>操作日志</h2>
+    <div id="log" class="log"></div>
+    <button id="clear-log">清空日志</button>
+  </div>
+
+  <script type="module">
+    // 这里将引入构建后的库
+    // 在实际使用时，替换为正确的路径
+    import { 
+      AdvancedQueue, 
+      generateUniqueId
+    } from '../dist/index.mjs';
+
+    let queue;
+    let lastMessageId = null;
+    
+    // 初始化队列
+    function initQueue() {
+      queue = new AdvancedQueue();
+      log('info', '队列已初始化');
+      updateQueueDisplay();
+    }
+    
+    // 生成随机ID
+    document.getElementById('generate-id').addEventListener('click', () => {
+      const id = generateUniqueId();
+      document.getElementById('message-id').value = id;
+      log('info', `已生成随机ID: ${id}`);
+    });
+    
+    // 发送消息
+    document.getElementById('send-message').addEventListener('click', () => {
+      const content = document.getElementById('message-content').value;
+      if (!content) {
+        log('error', '请输入消息内容');
+        return;
+      }
+      
+      const id = document.getElementById('message-id').value || undefined;
+      
+      const message = queue.enqueue(
+        { content, timestamp: new Date().toISOString() },
+        { id }
+      );
+      
+      lastMessageId = message.id;
+      
+      log('success', `消息已发送 - ID: ${message.id}, 内容: ${content}`);
+      updateQueueDisplay();
+    });
+    
+    // 发送重复消息
+    document.getElementById('send-duplicate').addEventListener('click', () => {
+      if (!lastMessageId) {
+        log('error', '请先发送一条消息');
+        return;
+      }
+      
+      const content = document.getElementById('message-content').value;
+      if (!content) {
+        log('error', '请输入消息内容');
+        return;
+      }
+      
+      // 使用上一条消息的ID
+      const message = queue.enqueue(
+        { content: content + ' (重复)', timestamp: new Date().toISOString() },
+        { id: lastMessageId }
+      );
+      
+      log('warning', `尝试发送重复消息 - ID: ${lastMessageId}, 内容: ${content} (重复)`);
+      updateQueueDisplay();
+    });
+    
+    // 清空日志
+    document.getElementById('clear-log').addEventListener('click', () => {
+      document.getElementById('log').innerHTML = '';
+    });
+    
+    // 更新队列显示
+    function updateQueueDisplay() {
+      const container = document.getElementById('queue-messages');
+      const messages = queue.getAllMessages();
+      
+      if (messages.length === 0) {
+        container.innerHTML = '<div>队列为空</div>';
+        return;
+      }
+      
+      container.innerHTML = messages.map(message => {
+        const isLastMessage = message.id === lastMessageId;
+        return `
+          <div class="message-item ${isLastMessage ? 'highlight' : ''}">
+            <strong>ID:</strong> ${message.id}<br>
+            <strong>内容:</strong> ${message.data.content}<br>
+            <strong>时间:</strong> ${new Date(message.data.timestamp).toLocaleString()}<br>
+            <strong>状态:</strong> ${message.status}
+          </div>
+        `;
+      }).join('');
+    }
+    
+    // 添加日志
+    function log(type, message) {
+      const logContainer = document.getElementById('log');
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${type}`;
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logContainer.appendChild(entry);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    }
+    
+    // 初始化
+    initQueue();
+    
+    // 添加演示说明
+    log('info', '欢迎使用消息幂等性演示');
+    log('info', '1. 输入消息内容并发送');
+    log('info', '2. 使用"生成随机ID"按钮生成唯一ID');
+    log('info', '3. 使用"发送重复消息"按钮尝试发送具有相同ID的消息');
+    log('info', '4. 观察队列中的消息 - 相同ID的消息只会存在一个实例');
+  </script>
+</body>
+</html>
