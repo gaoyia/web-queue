@@ -5,6 +5,14 @@
   "main": "dist/index.js",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
+  "repository": {
+    "url": "git+https://github.com/gaoyia/web-queue.git",
+    "type": "git"
+  },
+  "homepage": "https://gaoyia.github.io/web-queue/",
+  "bugs": {
+    "url": "https://github.com/gaoyia/web-queue/issues"
+  },
   "files": [
     "dist"
   ],
