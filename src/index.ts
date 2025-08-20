@@ -12,12 +12,8 @@ export { AdvancedTopicQueue } from './core/advanced-topic-queue';
 
 // Export storage drivers
 export { 
-  MemoryStorageDriver,
-  LocalStorageDriver,
-  IndexedDBStorageDriver,
   createStorageDriver
-} from './storage/drivers';
-
+} from './storage/index';
 // Export types and utilities
 export {
   Message,
@@ -38,4 +34,7 @@ export {
 
 // Default export
 import { Queue } from './core/queue';
+export { IndexedDBStorageDriver } from './storage/drivers/IndexedDBStorageDriver';
+export { LocalStorageDriver } from './storage/drivers/LocalStorageDriver';
+export { MemoryStorageDriver } from './storage/drivers/MemoryStorageDriver';
 export default Queue;

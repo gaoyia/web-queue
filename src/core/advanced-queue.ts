@@ -10,7 +10,7 @@ import {
   sortByPriorityAndTime,
   deepClone
 } from '../utils/helpers';
-import { createStorageDriver } from '../storage/drivers';
+import { createStorageDriver } from '../storage/index';
 
 /**
  * Enhanced queue implementation with advanced features

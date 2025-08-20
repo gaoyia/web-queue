@@ -1,6 +1,6 @@
 {
   "name": "web-queue",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A browser and Node.js compatible queue library with advanced features like priority, delay, retry, and persistence",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
