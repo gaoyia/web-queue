@@ -66,12 +66,13 @@
         </label>
       </div>
       <div>
-        <label>
+        <label class="checkbox-layout">
           <input type="checkbox" id="persistence-enabled" checked>
-          启用持久化
+          <span class="checkbox-text">启用持久化</span>
         </label>
       </div>
       <button id="create-topic">创建主题队列</button>
+      <button id="load-persistence">加载持久化数据</button>
     </div>
 
     <div class="panel">
@@ -183,6 +184,21 @@
       
       // 设置定时更新
       setInterval(updateQueueStatus, 1000);
+    });
+
+    document.getElementById('load-persistence').addEventListener('click', async () => {
+      if (!producerQueue) {
+        alert('请先创建主题队列！');
+        return;
+      }
+      
+      try {
+        await producerQueue.loadState();
+        alert('持久化数据加载成功！');
+        updateQueueStatus();
+      } catch (error) {
+        alert('加载持久化数据失败：' + error.message);
+      }
     });
     
     document.getElementById('send-message').addEventListener('click', () => {

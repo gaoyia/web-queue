@@ -114,3 +114,15 @@ input, select {
 .log-entry.success { color: #4CAF50; }
 .log-entry.warning { color: #FF9800; }
 .log-entry.error { color: #F44336; }
+/* 勾选框布局样式 */
+.checkbox-layout {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.checkbox-layout input[type="checkbox"] {
+  margin: 0;
+}
+.checkbox-layout .checkbox-text {
+ white-space: nowrap;
+}
